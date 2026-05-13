@@ -1,1 +1,3 @@
 # Tutaj wrzucaj pliki, skrypty modulow, procesorow itp.
+# Dobrze by bylo, gdyby pliki nazywala swoja funkcje, np.:
+# magnetometr.c, termometr.cpp
