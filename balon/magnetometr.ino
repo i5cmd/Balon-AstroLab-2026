@@ -44,7 +44,7 @@ class Kompas {
     void sprawdzMagnetometr() {
       if (!magnetometer.init()) {
         if (!works) {
-          Serial.println("[!] Nie znaleziono magnetometru.");
+          Serial.println(F("Nie znaleziono magnetometru."));
           while (1);
         }
       }
