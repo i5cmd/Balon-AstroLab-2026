@@ -7,7 +7,7 @@ void setup()
 {
   // uruchamia komunikację I2C
   Wire.begin();
-
+  Wire.setWireTimeout(250000, true);
   // uruchamia monitor portu szeregowego
   Serial.begin(9600);
 
