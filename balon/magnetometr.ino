@@ -1,24 +1,16 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <LIS3MDL.h>
+#include <SoftwareSerial.h>
+#include <SD.h>
 
 LIS3MDL magnetometer;
+SoftwareSerial porty(2, 3);
+File pliczek;
 
 int works = false;
 
 class Kompas {
-  private:
-    int xMin = 32676; // haha 67 no itd.
-    int xMax = -32676;
-    int yMin = 32676;
-    int yMax = -32676;
-    int zMin = 32676;
-    int zMax = -32676;
-
-    int xOffset = 0;
-    int yOffset = 0;
-    int zOffset = 0;
-
   public:
     int xCenter = 0;
     int yCenter = 0;
@@ -41,7 +33,7 @@ class Kompas {
       zCenter = magnetometer.m.z - zOffset;
     } */
 
-    void sprawdzMagnetometr() {
+    void sprawdzMagnetometrIPorty() {
       if (!magnetometer.init()) {
         if (!works) {
           Serial.println(F("Nie znaleziono magnetometru."));
@@ -51,16 +43,22 @@ class Kompas {
       else {
         magnetometer.enableDefault();
       }
+      if (!SD.begin(4)) {
+        Serial.println(F("Nie znaleziono karty SD."));
+        while (1);
+      }
     }
     
     void printData() {
-      Serial.print(millis());
-      Serial.print(F(","));
-      Serial.print(magnetometer.m.x);
-      Serial.print(F(","));
-      Serial.print(magnetometer.m.y);
-      Serial.print(F(","));
-      Serial.println(magnetometer.m.z);
+      if (!pliczek) return;
+      pliczek.print(millis());
+      pliczek.print(F(","));
+      pliczek.print(magnetometer.m.x);
+      pliczek.print(F(","));
+      pliczek.print(magnetometer.m.y);
+      pliczek.print(F(","));
+      pliczek.println(magnetometer.m.z);
+      pliczek.flush();
     }
 };
 
@@ -69,17 +67,22 @@ Kompas kompas;
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   Serial.begin(9600);
+  porty.begin(9600);
   delay(30);
   Wire.begin();
   Wire.setWireTimeout(250000, true);
   delay(30);
-  kompas.sprawdzMagnetometr();
+  kompas.sprawdzMagnetometrIPorty();
   Serial.println(F("Start pracy magnetometru."));
+  pliczek = SD.open("data.csv", FILE_WRITE);
   works = true;
 }
 
 void loop() {
-  magnetometer.read();
-  kompas.printData();
-  delay(200);
+  if (porty.available() > 0) {
+    char impuls = porty.read();
+    porty.write(impuls);
+    magnetometer.read();
+    kompas.printData();
+  }
 }
