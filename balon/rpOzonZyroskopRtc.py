@@ -1,6 +1,6 @@
 """
 Balon Stratosferyczny — Raspberry Pi Pico 2
-Zapis danych z zyroskopu i sensora ozonu na karte SD z RTC.
+Zapis danych z zyroskopu i sensora ozonu na karte SD z RTC DS1307.
 """
 
 import machine
@@ -8,7 +8,8 @@ import utime
 import os
 import math
 import sdcard
-
+import UART, Pin
+import time
 # piny
 spi = machine.SPI(0,
                   baudrate=1_000_000,
@@ -28,20 +29,18 @@ adc_x = machine.ADC(26)
 adc_y = machine.ADC(27)
 adc_z = machine.ADC(28)
 
-# zyroskop kalibracja
-ADC_OFFSET_X = 14186
-ADC_OFFSET_Y = 11484
-ADC_OFFSET_Z = 11474
-SENSITIVITY  = 0.015  
+uart = UART(0, 9600, tx=Pin(0))
+
+OFFSET = 32768
 
 # stale
 RTC_ADDR   = 0x68
 OZONE_ADDR = 0x73
 OZONE_REG  = 0x09
-SAMPLE_MS  = 200       
-FLUSH_MS   = 10_000    
+SAMPLE_MS  = 200
+FLUSH_MS   = 10_000
 
-# rtc
+# rtc DS1307
 def _bcd(b):
     return (b >> 4) * 10 + (b & 0x0F)
 
@@ -70,31 +69,19 @@ def rtc_filename():
     except:
         return "/sd/lot_dane.csv"
 
-# zyroskop
+# zyroskop — oryginalny kod
+def read_angles():
+    xv = adc_x.read_u16()
+    yv = adc_y.read_u16()
+    zv = adc_z.read_u16()
 
-def read_gyro():
-    sx, sy, sz = 0, 0, 0
-    N = 32
-    for _ in range(N):
-        sx += adc_x.read_u16()
-        sy += adc_y.read_u16()
-        sz += adc_z.read_u16()
-        utime.sleep_us(50)
-    rx = sx // N
-    ry = sy // N
-    rz = sz // N
+    xg = (xv - OFFSET) / OFFSET
+    yg = (yv - OFFSET) / OFFSET
+    zg = (zv - OFFSET) / OFFSET
 
-    xg = (rx - ADC_OFFSET_X) * SENSITIVITY
-    yg = (ry - ADC_OFFSET_Y) * SENSITIVITY
-    zg = (rz - ADC_OFFSET_Z) * SENSITIVITY
-
-    try:
-        pitch = math.degrees(math.atan2(xg, math.sqrt(yg**2 + zg**2)))
-        roll  = math.degrees(math.atan2(yg, math.sqrt(xg**2 + zg**2)))
-    except:
-        pitch, roll = 0.0, 0.0
-
-    return pitch, roll, rx, ry, rz
+    pitch = math.degrees(math.atan2(xg, math.sqrt(yg**2 + zg**2)))
+    roll  = math.degrees(math.atan2(yg, math.sqrt(xg**2 + zg**2)))
+    return pitch, roll
 
 # ozon
 def read_ozone():
@@ -105,7 +92,6 @@ def read_ozone():
         return -1
 
 # SD
-
 def init_sd():
     try:
         sd = sdcard.SDCard(spi, cs)
@@ -120,61 +106,66 @@ def init_sd():
 try:
     devices = i2c.scan()
     print("[I2C] Urzadzenia:", [hex(d) for d in devices])
-    print("[I2C] RTC:", "OK" if RTC_ADDR in devices else "BRAK")
+    print("[I2C] RTC:",  "OK" if RTC_ADDR   in devices else "BRAK")
     print("[I2C] Ozon:", "OK" if OZONE_ADDR in devices else "BRAK")
 except:
     print("[I2C] Blad szyny")
 
 # sd
-sd_ok = init_sd()
+sd_ok    = init_sd()
 filename = rtc_filename()
 
-# zapis sd
+# plik csv
 file_ptr = None
 if sd_ok:
     try:
         file_ptr = open(filename, "a")
         if os.stat(filename)[6] == 0:
-            file_ptr.write("Czas,Sekundy_Misji,Pitch_deg,Roll_deg,Ozon_ppb,Raw_X,Raw_Y,Raw_Z\n")
+            file_ptr.write("Czas,Sekundy_Misji,Pitch,Roll,Ozon_ppb\n")
             file_ptr.flush()
         print("[SD] Plik:", filename)
     except Exception as e:
         print("[SD] Blad pliku:", e)
         sd_ok = False
 
-start_tick     = utime.ticks_ms()
-last_sample    = utime.ticks_ms()
-last_flush     = utime.ticks_ms()
+start_tick  = utime.ticks_ms()
+last_sample = utime.ticks_ms()
+last_flush  = utime.ticks_ms()
 
-
+print("Logowanie rozpoczete!")
 
 # glowne
 while True:
+     
+     uart.write("siema")
+     print("wyslano")
+     
     try:
+        
         now = utime.ticks_ms()
 
         if utime.ticks_diff(now, last_sample) >= SAMPLE_MS:
             last_sample = now
 
-            uptime_s         = utime.ticks_diff(now, start_tick) / 1000.0
-            timestamp        = rtc_timestamp()
-            pitch, roll, rx, ry, rz = read_gyro()
-            ozone            = read_ozone()
+            uptime_s  = utime.ticks_diff(now, start_tick) / 1000.0
+            timestamp = rtc_timestamp()
+            p, r      = read_angles()
+            ozone     = read_ozone()
 
-            line = "{},{:.1f},{:.2f},{:.2f},{},{},{},{}\n".format(
-                timestamp, uptime_s, pitch, roll, ozone, rx, ry, rz)
+            line = "{},{:.2f},{:.2f},{:.2f},{}\n".format(
+                timestamp, uptime_s, p, r, ozone)
 
             if sd_ok and file_ptr:
                 file_ptr.write(line)
-
                 if utime.ticks_diff(now, last_flush) >= FLUSH_MS:
                     file_ptr.flush()
                     os.sync()
                     last_flush = now
 
-            print("[{}] P:{:>6.2f}  R:{:>6.2f}  O3:{} ppb".format(
-                timestamp, pitch, roll, ozone))
+            print("[{}] P:{:>6.2f}  R:{:>6.2f}  Ozon:{} ppb".format(
+                timestamp, p, r, ozone))
 
     except Exception as e:
         print("[BLAD]", e)
         utime.sleep_ms(1000)
+
