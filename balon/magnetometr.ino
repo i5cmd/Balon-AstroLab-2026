@@ -3,14 +3,19 @@
 #include <LIS3MDL.h>
 #include <SoftwareSerial.h>
 #include <SD.h>
+#include <RTClib.h>
+#include <M2M_LM75A.h>
 
 LIS3MDL magnetometer;
 SoftwareSerial porty(2, 3);
 File pliczek;
+RTC_DS1307 rtc;
+M2M_LM75A termometr(0x4B);
+int index = 0;
 
-int works = false;
+bool works = false;
 
-class Kompas {
+class Module {
   public:
     int xCenter = 0;
     int yCenter = 0;
@@ -33,7 +38,7 @@ class Kompas {
       zCenter = magnetometer.m.z - zOffset;
     } */
 
-    void sprawdzMagnetometrIPorty() {
+    void check() {
       if (!magnetometer.init()) {
         if (!works) {
           Serial.println(F("Nie znaleziono magnetometru."));
@@ -43,26 +48,45 @@ class Kompas {
       else {
         magnetometer.enableDefault();
       }
-      if (!SD.begin(4)) {
+      if (!SD.begin(10)) {
         Serial.println(F("Nie znaleziono karty SD."));
         while (1);
+      }
+      if (!rtc.begin()) {
+        Serial.println("Nie znaleziono RTC.");
+        while (1);
+      }
+      if (!rtc.isrunning()) {
+        Serial.println(F("RTC utracił zasilanie, ustawiam czas kompilacji!"));
+        rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
       }
     }
     
     void printData() {
       if (!pliczek) return;
-      pliczek.print(millis());
+      DateTime date = rtc.now();
+      index++;
+      pliczek.print(index);
+      pliczek.print(F(","));
+      pliczek.print(date.hour(), DEC);
+      pliczek.print(F(":"));
+      pliczek.print(date.minute(), DEC);
+      pliczek.print(F(":"));
+      pliczek.print(date.second(), DEC);
       pliczek.print(F(","));
       pliczek.print(magnetometer.m.x);
       pliczek.print(F(","));
       pliczek.print(magnetometer.m.y);
       pliczek.print(F(","));
-      pliczek.println(magnetometer.m.z);
+      pliczek.print(magnetometer.m.z);
+      pliczek.print(F(","));
+      pliczek.print(termometr.getTemperature());
+      pliczek.println(F(""));
       pliczek.flush();
     }
 };
 
-Kompas kompas;
+Module module;
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -72,17 +96,15 @@ void setup() {
   Wire.begin();
   Wire.setWireTimeout(250000, true);
   delay(30);
-  kompas.sprawdzMagnetometrIPorty();
+  module.check();
   Serial.println(F("Start pracy magnetometru."));
   pliczek = SD.open("data.csv", FILE_WRITE);
+  termometr.begin();
   works = true;
 }
 
 void loop() {
-  if (porty.available() > 0) {
-    char impuls = porty.read();
-    porty.write(impuls);
     magnetometer.read();
-    kompas.printData();
-  }
+    module.printData();
+    delay(200);
 }
