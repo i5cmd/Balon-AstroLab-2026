@@ -11,7 +11,7 @@ File pliczek;
 RTC_DS1307 rtc;
 M2M_LM75A termometrIn(0x4B);
 M2M_LM75A termometrOut(0x48);
-int index = 0;
+uint32_t index = 0;
 
 class Module {
   public:
@@ -57,6 +57,15 @@ class Module {
         rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
       }
     }
+
+    float freezingTemperatures(float temp) {
+      if (temp > 150) {
+        return temp - 256;
+      }
+      else {
+        return temp;
+      }
+    }
     
     void printData() {
       if (!pliczek) return;
@@ -76,9 +85,9 @@ class Module {
       pliczek.print(F(","));
       pliczek.print(magnetometer.m.z);
       pliczek.print(F(","));
-      pliczek.print(termometrIn.getTemperature());
+      pliczek.print(freezingTemperatures(termometrIn.getTemperature()));
       pliczek.print(F(","));
-      pliczek.print(termometrOut.getTemperature());
+      pliczek.print(freezingTemperatures(termometrOut.getTemperature()));
       pliczek.println(F(""));
       pliczek.flush();
     }
