@@ -48,6 +48,9 @@ class Module {
     
     void printData() {
       if (!pliczek) return;
+      if (pliczek.size() == 0) {
+        pliczek.println(F("index,czas,mx,my,mz,tInt,tOut"));
+      }
       DateTime date = rtc.now();
       index++;
       pliczek.print(index);
