@@ -54,7 +54,7 @@ class Module {
         rtcon = true;
         if (!rtc.isrunning()) {
           Serial.println(F("Moduł zegara RTC utracił obecnie zasilanie, ustawiam czas ostatniej kompilacji kodu na Arduino."));
-          rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+          rtc.adjust(DateTime(2026, 6, 17, 10, 0, 0)); // bateria psuje rtc z jakiegoś powodu x_x
         }
       }
     }
@@ -120,6 +120,7 @@ void setup() {
   }
   termometrIn.begin();
   termometrOut.begin();
+  // rtc.adjust(DateTime(2026, 6, 17, 10, 0, 0));
 }
 
 void loop() {
@@ -129,6 +130,16 @@ void loop() {
   }
   if (mon) {
     magnetometer.read();
+    mx = magnetometer.m.x;
+    my = magnetometer.m.y;
+    mz = magnetometer.m.z;
+  }
+  else {
+    mx = 4040404;
+    my = 4040404;
+    mz = 4040404;
+  }
+  if (sdon) {
     module.printData();
   }
   if (sdon && sdon != sdonPrev) {
