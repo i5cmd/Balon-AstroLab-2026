@@ -9,6 +9,7 @@
 // inicjacja
 LIS3MDL magnetometer;
 File pliczek;
+File czas;
 RTC_DS1307 rtc;
 M2M_LM75A termometrIn(0x4B);
 M2M_LM75A termometrOut(0x48);
@@ -27,6 +28,18 @@ bool sdonPrev = false;
 int32_t mx = 0;
 int32_t my = 0;
 int32_t mz = 0;
+
+class LastTime {
+  public:
+    int32_t year = 2026;
+    int32_t month = 6;
+    int32_t day = 17;
+    int32_t hour = 10;
+    int32_t minute = 0;
+    int32_t second = 0;
+};
+
+LastTime lastTime;
 
 class Module {
   public:
@@ -54,7 +67,7 @@ class Module {
         rtcon = true;
         if (!rtc.isrunning()) {
           Serial.println(F("Moduł zegara RTC utracił obecnie zasilanie, ustawiam czas ostatniej kompilacji kodu na Arduino."));
-          rtc.adjust(DateTime(2026, 6, 17, 10, 0, 0)); // bateria psuje rtc z jakiegoś powodu x_x
+          //rtc.adjust(DateTime(2026, 6, 17, 10, 0, 0));
         }
       }
     }
@@ -97,6 +110,43 @@ class Module {
       pliczek.print(independentIndex);
       pliczek.println(F(""));
       pliczek.flush();
+
+      czas = SD.open("time.txt", O_WRITE | O_CREAT | O_TRUNC);
+      czas.print(date.year(), DEC);
+      czas.print(F(","));
+      czas.print(date.month(), DEC);
+      czas.print(F(","));
+      czas.print(date.day(), DEC);
+      czas.print(F(","));
+      czas.print(date.hour(), DEC);
+      czas.print(F(","));
+      czas.print(date.minute(), DEC);
+      czas.print(F(","));
+      czas.print(date.second(), DEC);
+      czas.close();
+    }
+    void setTime() {
+      if (!czas || czas.size() == 0) {
+        rtc.adjust(DateTime(2026, 6, 17, 10, 0, 0));
+        return;
+      }
+      else if (czas.available()) {
+        char linia[32];
+        size_t n = czas.readBytesUntil('\n', linia, sizeof(linia) - 1);
+        linia[n] = '\0';
+
+        czas.close();
+
+        lastTime.year = atoi(strtok(linia, ","));
+        lastTime.month = atoi(strtok(NULL, ","));
+        lastTime.day = atoi(strtok(NULL, ","));
+        lastTime.hour = atoi(strtok(NULL, ","));
+        lastTime.minute = atoi(strtok(NULL, ","));
+        lastTime.second = atoi(strtok(NULL, ","));
+
+        rtc.adjust(DateTime(lastTime.year, lastTime.month, lastTime.day, lastTime.hour, lastTime.minute, lastTime.second));
+        return;
+      }
     }
 };
 
@@ -113,6 +163,8 @@ void setup() {
   Serial.println(F("Start pracy magnetometru, termometrów."));
   if (sdon && sdon != sdonPrev) {
     pliczek = SD.open("data.csv", FILE_WRITE);
+    czas = SD.open("time.txt", FILE_READ);
+    module.setTime();
     sdonPrev = true;
   }
   else if (!sdon) {
